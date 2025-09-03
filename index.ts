@@ -38,6 +38,7 @@ interface Channel {
   group?: string;
   logo?: string;
   attrs: Record<string, string>;
+  userAgent?: string;
 }
 
 function parseM3U(text: string): Channel[] {
@@ -60,11 +61,25 @@ function parseM3U(text: string): Channel[] {
     // Extract channel name: text after the last comma
     const name = (line.split(',').pop() || '').trim();
 
-    // Next non-empty line is the URL
+    // Look for user agent in subsequent lines and find the URL
     let url = '';
+    let userAgent: string | undefined;
     while (i + 1 < lines.length) {
       const maybe = lines[++i]?.trim();
-      if (maybe && !maybe.startsWith('#')) { url = maybe; break; }
+      if (!maybe) continue;
+      
+      // Check for EXTVLCOPT user agent
+      if (maybe.startsWith('#EXTVLCOPT:http-user-agent=')) {
+        userAgent = maybe.replace('#EXTVLCOPT:http-user-agent=', '');
+        continue;
+      }
+      
+      // Skip other comments
+      if (maybe.startsWith('#')) continue;
+      
+      // Found the URL
+      url = maybe;
+      break;
     }
     if (!url) continue;
 
@@ -74,6 +89,7 @@ function parseM3U(text: string): Channel[] {
       group: attrs['group-title'] || attrs['group'] || undefined,
       logo: attrs['tvg-logo'] || undefined,
       attrs,
+      userAgent,
     });
   }
   return channels;
@@ -90,22 +106,33 @@ function ensureMpvAvailable(cmd: string): boolean {
   return probe.status === 0;
 }
 
-function playInMpv(url: string) {
+function playInMpv(channel: Channel) {
   const hasMpv = ensureMpvAvailable(MPV_CMD);
   if (!hasMpv) {
     throw new Error(`mpv not found. Install mpv or pass a custom binary with --mpv <path>.`);
   }
 
+  // Build mpv arguments
+  const args = [];
+  
+  // Add user agent if present
+  if (channel.userAgent) {
+    args.push(`--user-agent=${channel.userAgent}`);
+  }
+  
+  // Add the URL
+  args.push(channel.url);
+
   if (!STAY) {
     // Tear down TUI before handing control to mpv
     screen.destroy();
-    const child = spawn(MPV_CMD, [url], { stdio: 'inherit' });
+    const child = spawn(MPV_CMD, args, { stdio: 'inherit' });
     child.on('exit', code => process.exit(code ?? 0));
     return;
   }
 
   // Launch mpv detached (no TUI teardown). mpv will print to the terminal; TUI remains usable.
-  const child = spawn(MPV_CMD, [url], { stdio: 'ignore', detached: true });
+  const child = spawn(MPV_CMD, args, { stdio: 'ignore', detached: true });
   child.unref();
   status(`Launched mpv in background.`);
 }
@@ -253,10 +280,14 @@ function renderSidebar() {
     `{bold}Group{/bold}: ${c.group || '—'}`,
     `{bold}URL{/bold}:`,
     `${truncate(c.url, 28)}`,
-    '',
-    '{bold}Attrs{/bold}:',
   ];
-  for (const [k, v] of Object.entries(c.attrs).slice(0, 10)) {
+  
+  if (c.userAgent) {
+    lines.push('', `{bold}User Agent{/bold}: ${truncate(c.userAgent, 28)}`);
+  }
+  
+  lines.push('', '{bold}Attrs{/bold}:');
+  for (const [k, v] of Object.entries(c.attrs).slice(0, 8)) {
     lines.push(`${k}: ${truncate(v, 28)}`);
   }
   sidebar.setContent(lines.join(EOL));
@@ -291,7 +322,7 @@ list.key(['enter'], () => {
   const c = filtered[idx];
   if (!c) return;
   status(`Playing: ${c.name}`);
-  try { playInMpv(c.url); } catch (e: any) { status(`{red-fg}${e.message}{/red-fg}`); }
+  try { playInMpv(c); } catch (e: any) { status(`{red-fg}${e.message}{/red-fg}`); }
 });
 
 list.on('select item', () => renderSidebar());

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=IPTV PT Terminal
+Comment=Portuguese IPTV Terminal Player
+Exec=ghostty -e "cd $HOME/src/iptv && bun run index.ts --stay"
+Icon=applications-multimedia
+Terminal=false
+Categories=AudioVideo;Video;Player;
+StartupNotify=true
