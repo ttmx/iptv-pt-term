@@ -2,6 +2,8 @@
 
 A terminal-based TUI (Text User Interface) for browsing and playing Portuguese IPTV channels using the M3UPT playlist.
 
+![IPTV Player Interface](screenshots/iptv-player-interface.png)
+
 ## Features
 
 - Browse Portuguese TV and radio channels
